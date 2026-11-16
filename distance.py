@@ -264,7 +264,7 @@ window = app.create_window(
 )
 
 
-# 2. 왼쪽: 3D 화면
+# 2. 왼쪽에 3D 화면 생성
 viewer = gui.SceneWidget()
 viewer.scene = rendering.Open3DScene(window.renderer)
 viewer.scene.set_background([1, 1, 1, 1])
@@ -272,22 +272,27 @@ viewer.scene.set_background([1, 1, 1, 1])
 window.add_child(viewer)
 
 
-# 3. 점군 표시 재질
+# 3. 점군의 색상과 크기를 표시할 재질 설정
 point_material = rendering.MaterialRecord()
 point_material.shader = "defaultUnlit"
 point_material.point_size = 4.0
 
+# 원본 의자 표시
 viewer.scene.add_geometry(
     "original_chair", chair_pcd, point_material
 )
+
+# 칠판 표시
 viewer.scene.add_geometry(
     "board", filtered_pcd, point_material
 )
+
+# 회전 및 이동한 의자 표시
 viewer.scene.add_geometry(
     "moved_chair", moved_chair_pcd, point_material
 )
 
-# 거리 연결선
+# 거리 연결선의 재질 설정
 line_material = rendering.MaterialRecord()
 line_material.shader = "unlitLine"
 line_material.line_width = 3.0
@@ -296,7 +301,7 @@ viewer.scene.add_geometry(
     "gap_line", gap_line, line_material
 )
 
-# 선 양 끝의 마커
+# 거리 연결선 양 끝의 마커 표시
 viewer.scene.add_geometry(
     "chair_marker", chair_marker, point_material
 )
@@ -305,7 +310,7 @@ viewer.scene.add_geometry(
 )
 
 
-# 4. 오른쪽: 측정 결과 패널
+# 4. 오른쪽에 측정 결과 패널 생성
 em = window.theme.font_size
 
 panel = gui.Vert(
@@ -315,15 +320,18 @@ panel = gui.Vert(
 window.add_child(panel)
 
 
+# 패널에 텍스트를 추가하는 함수
 def add_text(text):
     panel.add_child(gui.Label(text))
 
 
+# 회전 각도 표시
 add_text("ROTATION AND TRANSLATION")
 add_text(f"Rotation: {angle_deg:.1f} deg")
 
 panel.add_fixed(0.5 * em)
 
+# 각 축 방향의 이동량 표시
 add_text("Translation (m)")
 add_text(f"X: {translation[0]:+.4f}")
 add_text(f"Y: {translation[1]:+.4f}")
@@ -331,6 +339,7 @@ add_text(f"Z: {translation[2]:+.4f}")
 
 panel.add_fixed(em)
 
+# 최종 의자 중심 좌표 표시
 add_text("Final chair centroid (m)")
 add_text(f"X: {moved_chair_centroid[0]:.4f}")
 add_text(f"Y: {moved_chair_centroid[1]:.4f}")
@@ -338,11 +347,13 @@ add_text(f"Z: {moved_chair_centroid[2]:.4f}")
 
 panel.add_fixed(em)
 
+# 칠판의 추정 평면까지 거리 표시
 add_text("DISTANCE TO FITTED PLANE")
 add_text(f"Target gap: {target_distance:.4f} m")
 add_text(f"Minimum gap: {verified_min_distance:.4f} m")
 add_text(f"Center distance: {verified_center_distance:.4f} m")
 
+# 목표 최소 간격과 계산된 최소 간격의 차이 표시
 gap_error = abs(
     verified_min_distance - target_distance
 )
@@ -350,22 +361,26 @@ add_text(f"Gap error: {gap_error * 1000:.3f} mm")
 
 panel.add_fixed(em)
 
+# 점군과 연결선의 색상 설명
 add_text("Blue: original chair")
 add_text("Green: rotated / moved chair")
 add_text("Orange: board")
 add_text("Red: minimum plane gap")
 
 panel.add_fixed(em)
+
+# 실제 설비 이동이 아닌 점군의 가상 이동임을 표시
 add_text("Virtual movement of recorded points")
 
 
-# 5. ウィンドウのサイズに合わせて左右を配置
+# 5. 창 크기에 맞춰 3D 화면과 패널 배치
 def on_layout(layout_context):
     rect = window.content_rect
 
     panel_width = min(23 * em, rect.width * 0.45)
     viewer_width = rect.width - panel_width
 
+    # 왼쪽 3D 화면의 위치와 크기
     viewer.frame = gui.Rect(
         rect.x,
         rect.y,
@@ -373,6 +388,7 @@ def on_layout(layout_context):
         rect.height
     )
 
+    # 오른쪽 측정 결과 패널의 위치와 크기
     panel.frame = gui.Rect(
         rect.x + viewer_width,
         rect.y,
@@ -384,7 +400,7 @@ def on_layout(layout_context):
 window.set_on_layout(on_layout)
 
 
-# 6. 全点群が見えるようにカメラを設定
+# 6. 전체 점군이 보이도록 초기 카메라 설정
 bounds = viewer.scene.bounding_box
 
 viewer.setup_camera(
@@ -394,7 +410,7 @@ viewer.setup_camera(
 )
 
 
-# 7. 距離線の中央にも数値を表示
+# 7. 거리 연결선의 중앙에 거리 값 표시
 line_midpoint = (
     nearest_chair_point + projected_board_point
 ) / 2
@@ -405,5 +421,5 @@ viewer.add_3d_label(
 )
 
 
-# 8. GUIを起動
+# 8. GUI 실행
 app.run()
