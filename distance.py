@@ -252,14 +252,158 @@ plane_marker = make_marker(
 chair_pcd.paint_uniform_color([0, 0, 1])
 filtered_pcd.paint_uniform_color([1, 0.5, 0])
 
-o3d.visualization.draw_geometries(
-    [
-        chair_pcd,
-        filtered_pcd,
-        moved_chair_pcd,
-        gap_line,
-        chair_marker,
-        plane_marker
-    ],
-    window_name="Chair-to-plane minimum gap: 1 m"
+from open3d.visualization import gui, rendering
+
+
+# 1. GUI 초기화
+app = gui.Application.instance
+app.initialize()
+
+window = app.create_window(
+    "LiDAR Distance Measurement", 1280, 800
 )
+
+
+# 2. 왼쪽: 3D 화면
+viewer = gui.SceneWidget()
+viewer.scene = rendering.Open3DScene(window.renderer)
+viewer.scene.set_background([1, 1, 1, 1])
+
+window.add_child(viewer)
+
+
+# 3. 점군 표시 재질
+point_material = rendering.MaterialRecord()
+point_material.shader = "defaultUnlit"
+point_material.point_size = 4.0
+
+viewer.scene.add_geometry(
+    "original_chair", chair_pcd, point_material
+)
+viewer.scene.add_geometry(
+    "board", filtered_pcd, point_material
+)
+viewer.scene.add_geometry(
+    "moved_chair", moved_chair_pcd, point_material
+)
+
+# 거리 연결선
+line_material = rendering.MaterialRecord()
+line_material.shader = "unlitLine"
+line_material.line_width = 3.0
+
+viewer.scene.add_geometry(
+    "gap_line", gap_line, line_material
+)
+
+# 선 양 끝의 마커
+viewer.scene.add_geometry(
+    "chair_marker", chair_marker, point_material
+)
+viewer.scene.add_geometry(
+    "plane_marker", plane_marker, point_material
+)
+
+
+# 4. 오른쪽: 측정 결과 패널
+em = window.theme.font_size
+
+panel = gui.Vert(
+    0.5 * em,
+    gui.Margins(em, em, em, em)
+)
+window.add_child(panel)
+
+
+def add_text(text):
+    panel.add_child(gui.Label(text))
+
+
+add_text("ROTATION AND TRANSLATION")
+add_text(f"Rotation: {angle_deg:.1f} deg")
+
+panel.add_fixed(0.5 * em)
+
+add_text("Translation (m)")
+add_text(f"X: {translation[0]:+.4f}")
+add_text(f"Y: {translation[1]:+.4f}")
+add_text(f"Z: {translation[2]:+.4f}")
+
+panel.add_fixed(em)
+
+add_text("Final chair centroid (m)")
+add_text(f"X: {moved_chair_centroid[0]:.4f}")
+add_text(f"Y: {moved_chair_centroid[1]:.4f}")
+add_text(f"Z: {moved_chair_centroid[2]:.4f}")
+
+panel.add_fixed(em)
+
+add_text("DISTANCE TO FITTED PLANE")
+add_text(f"Target gap: {target_distance:.4f} m")
+add_text(f"Minimum gap: {verified_min_distance:.4f} m")
+add_text(f"Center distance: {verified_center_distance:.4f} m")
+
+gap_error = abs(
+    verified_min_distance - target_distance
+)
+add_text(f"Gap error: {gap_error * 1000:.3f} mm")
+
+panel.add_fixed(em)
+
+add_text("Blue: original chair")
+add_text("Green: rotated / moved chair")
+add_text("Orange: board")
+add_text("Red: minimum plane gap")
+
+panel.add_fixed(em)
+add_text("Virtual movement of recorded points")
+
+
+# 5. ウィンドウのサイズに合わせて左右を配置
+def on_layout(layout_context):
+    rect = window.content_rect
+
+    panel_width = min(23 * em, rect.width * 0.45)
+    viewer_width = rect.width - panel_width
+
+    viewer.frame = gui.Rect(
+        rect.x,
+        rect.y,
+        viewer_width,
+        rect.height
+    )
+
+    panel.frame = gui.Rect(
+        rect.x + viewer_width,
+        rect.y,
+        panel_width,
+        rect.height
+    )
+
+
+window.set_on_layout(on_layout)
+
+
+# 6. 全点群が見えるようにカメラを設定
+bounds = viewer.scene.bounding_box
+
+viewer.setup_camera(
+    60.0,
+    bounds,
+    bounds.get_center()
+)
+
+
+# 7. 距離線の中央にも数値を表示
+line_midpoint = (
+    nearest_chair_point + projected_board_point
+) / 2
+
+viewer.add_3d_label(
+    line_midpoint.astype(np.float32),
+    f"{verified_min_distance:.3f} m"
+)
+
+
+# 8. GUIを起動
+app.run()
