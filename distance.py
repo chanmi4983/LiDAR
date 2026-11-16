@@ -119,92 +119,124 @@ unit_normal = (
     board_normal_toward_chair
     / np.linalg.norm(board_normal_toward_chair)
 )
-# 2. 칠판 평면에서 1m 떨어진 목표점 계산
+# 2. 의자 각 점에서 칠판 평면까지 부호 있는 거리 계산
+# unit_normal은 칠판에서 의자 쪽을 향하는 단위 법선
+# board_surface_point는 칠판 평면 위의 기준점
 
+signed_distances = (
+    chair_points - board_surface_point
+) @ unit_normal
+
+# 양수: 의자 쪽 / 음수: 반대쪽
+current_min_distance = np.min(signed_distances)
+
+print("\n[이동 전]")
+print("중심의 부호 있는 평면 거리:",
+      np.dot(chair_centroid - board_surface_point, unit_normal),
+      "m")
+print("최소 부호 있는 평면 거리:",
+      current_min_distance, "m")
+
+if current_min_distance < 0:
+    print("주의: 일부 의자 점이 칠판 평면 반대쪽에 있습니다.")
+
+
+# 3. 가장 가까운 의자 점의 간격이 1m가 되도록 이동
 target_distance = 1.0
 
-target_position = (
-    board_surface_point
-    + target_distance * unit_normal
-)
+# 양수면 칠판에서 멀어지고, 음수면 가까워짐
+move_amount = target_distance - current_min_distance
 
-print("\n[목표 위치]")
-print("칠판 평면 위 기준점:", board_surface_point)
-print("의자 쪽 단위 법선:", unit_normal)
-print("목표 위치:", target_position)
+translation = move_amount * unit_normal
 
-# 3. 의자 전체를 목표 위치로 평행이동
-
-# 목표 위치 - 현재 의자 중심 = 이동 벡터
-translation = target_position - chair_centroid
-
-# 원본 chair_points는 보존
+# 원본 좌표는 보존하고 복사본 이동
 moved_chair = chair_points + translation
-
-# 이동된 의자의 중심
 moved_chair_centroid = np.mean(moved_chair, axis=0)
 
 print("\n[의자 이동]")
+print("법선 방향 이동량:", move_amount, "m")
 print("이동 벡터:", translation)
 print("이동 전 중심:", chair_centroid)
 print("이동 후 중심:", moved_chair_centroid)
 
 
-# 4. 이동 후 의자 PointCloud 만들기
+# 4. 이동 후 간격 검증
+moved_signed_distances = (
+    moved_chair - board_surface_point
+) @ unit_normal
 
-moved_chair_pcd = o3d.geometry.PointCloud()
-moved_chair_pcd.points = o3d.utility.Vector3dVector(moved_chair)
-
-moved_chair_pcd.paint_uniform_color([0, 1, 0])
-
-
-# 5. 칠판 평면에서 의자 중심까지의 거리 검증
-
-a, b, c, d = plane_model
-
-# 이동한 의자 중심을 평면 방정식에 대입
-plane_value = (
-    np.dot(plane_model[:3], moved_chair_centroid)
-    + d
-)
-
-# 평면과 점 사이 수직 거리
-verified_distance = (
-    abs(plane_value)
-    / np.linalg.norm(plane_model[:3])
+verified_min_distance = np.min(moved_signed_distances)
+verified_center_distance = np.dot(
+    moved_chair_centroid - board_surface_point,
+    unit_normal
 )
 
 print("\n[거리 검증]")
-print("목표 거리:", target_distance, "m")
-print("이동 후 의자 중심의 평면 수직 거리:", verified_distance, "m")
-print("중심 위치 오차:",
-      np.linalg.norm(moved_chair_centroid - target_position), "m")
+print("목표 최소 간격:", target_distance, "m")
+print("이동 후 최소 간격:", verified_min_distance, "m")
+print("이동 후 중심 거리:", verified_center_distance, "m")
+print("최소 간격 오차:",
+      abs(verified_min_distance - target_distance), "m")
 
 
-# 6. 의자 실제 점군에서 칠판 평면까지의 거리 확인
+# 5. 가장 가까운 의자 점과 칠판 평면 위 수선의 발
+nearest_idx = np.argmin(moved_signed_distances)
+nearest_chair_point = moved_chair[nearest_idx]
 
-# 이동한 의자의 모든 점에서 평면까지의 수직 거리
-chair_plane_distances = np.abs(
-    moved_chair @ plane_model[:3] + d
-) / np.linalg.norm(plane_model[:3])
+# 의자 점에서 법선 방향 거리를 빼면 평면 위에 도달
+projected_board_point = (
+    nearest_chair_point
+    - verified_min_distance * unit_normal
+)
 
-print("의자 점들의 최소 평면 거리:",
-      np.min(chair_plane_distances), "m")
+gap_line = o3d.geometry.LineSet()
+gap_line.points = o3d.utility.Vector3dVector([
+    projected_board_point,
+    nearest_chair_point
+])
+gap_line.lines = o3d.utility.Vector2iVector([[0, 1]])
+gap_line.colors = o3d.utility.Vector3dVector([[1, 0, 0]])
 
 
-# 7. Open3D 시각화
-
-# 원본 의자: 파랑
-chair_pcd.paint_uniform_color([0, 0, 1])
-
-# 칠판: 주황
-filtered_pcd.paint_uniform_color([1, 0.5, 0])
-
-# 이동 의자: 초록
+# 6. 이동한 의자 점군 생성
+moved_chair_pcd = o3d.geometry.PointCloud()
+moved_chair_pcd.points = o3d.utility.Vector3dVector(
+    moved_chair
+)
 moved_chair_pcd.paint_uniform_color([0, 1, 0])
 
-o3d.visualization.draw_geometries([
-    chair_pcd,
-    filtered_pcd,
-    moved_chair_pcd
-])
+
+# 7. 거리 선의 양 끝을 구체로 표시
+def make_marker(position, color, radius=0.02):
+    marker = o3d.geometry.TriangleMesh.create_sphere(
+        radius=radius
+    )
+    marker.compute_vertex_normals()
+    marker.paint_uniform_color(color)
+    marker.translate(position)
+    return marker
+
+
+chair_marker = make_marker(
+    nearest_chair_point, [1, 0, 0]
+)
+plane_marker = make_marker(
+    projected_board_point, [1, 0, 0]
+)
+
+
+# 8. 시각화
+chair_pcd.paint_uniform_color([0, 0, 1])
+filtered_pcd.paint_uniform_color([1, 0.5, 0])
+
+o3d.visualization.draw_geometries(
+    [
+        chair_pcd,
+        filtered_pcd,
+        moved_chair_pcd,
+        gap_line,
+        chair_marker,
+        plane_marker
+    ],
+    window_name="Chair-to-plane minimum gap: 1 m"
+)
