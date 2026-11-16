@@ -119,46 +119,69 @@ unit_normal = (
     board_normal_toward_chair
     / np.linalg.norm(board_normal_toward_chair)
 )
-# 2. 의자 각 점에서 칠판 평면까지 부호 있는 거리 계산
-# unit_normal은 칠판에서 의자 쪽을 향하는 단위 법선
-# board_surface_point는 칠판 평면 위의 기준점
+# 2. 의자 중심을 기준으로 회전
+angle_deg = 90.0  # 반대로 돌리려면 -90, 반 바퀴는 180
+angle_rad = np.deg2rad(angle_deg)
 
+cos_angle = np.cos(angle_rad)
+sin_angle = np.sin(angle_rad)
+
+# Z축을 중심으로 회전하는 행렬
+rotation_matrix = np.array([
+    [cos_angle, -sin_angle, 0],
+    [sin_angle,  cos_angle, 0],
+    [0,          0,         1]
+])
+
+# 중심을 원점으로 옮겨 회전하고, 원래 위치로 되돌리기
+rotated_chair = (
+    (chair_points - chair_centroid) @ rotation_matrix.T
+    + chair_centroid
+)
+
+rotated_centroid = np.mean(rotated_chair, axis=0)
+
+
+# 3. 회전한 의자를 칠판 정면에 정렬하고 간격 맞추기
+
+# 회전한 점들로 평면 거리를 다시 계산
 signed_distances = (
-    chair_points - board_surface_point
+    rotated_chair - board_surface_point
 ) @ unit_normal
 
-# 양수: 의자 쪽 / 음수: 반대쪽
 current_min_distance = np.min(signed_distances)
 
-print("\n[이동 전]")
-print("중심의 부호 있는 평면 거리:",
-      np.dot(chair_centroid - board_surface_point, unit_normal),
-      "m")
-print("최소 부호 있는 평면 거리:",
-      current_min_distance, "m")
-
-if current_min_distance < 0:
-    print("주의: 일부 의자 점이 칠판 평면 반대쪽에 있습니다.")
-
-
-# 3. 가장 가까운 의자 점의 간격이 1m가 되도록 이동
 target_distance = 1.0
-
-# 양수면 칠판에서 멀어지고, 음수면 가까워짐
 move_amount = target_distance - current_min_distance
 
-translation = move_amount * unit_normal
+# 의자 중심을 칠판 평면에 투영
+center_distance = np.dot(
+    rotated_centroid - board_surface_point,
+    unit_normal
+)
 
-# 원본 좌표는 보존하고 복사본 이동
-moved_chair = chair_points + translation
+center_projection = (
+    rotated_centroid - center_distance * unit_normal
+)
+
+# 평면과 나란하게 움직여 칠판 기준점 정면에 정렬
+alignment_translation = (
+    board_surface_point - center_projection
+)
+
+# 정면 정렬 이동 + 간격 조정 이동
+translation = (
+    alignment_translation + move_amount * unit_normal
+)
+
+# 회전된 의자에 이동 적용
+moved_chair = rotated_chair + translation
 moved_chair_centroid = np.mean(moved_chair, axis=0)
 
-print("\n[의자 이동]")
-print("법선 방향 이동량:", move_amount, "m")
+print("\n[회전 및 이동]")
+print("회전 각도:", angle_deg, "도")
 print("이동 벡터:", translation)
-print("이동 전 중심:", chair_centroid)
-print("이동 후 중심:", moved_chair_centroid)
-
+print("최종 의자 중심:", moved_chair_centroid)
 
 # 4. 이동 후 간격 검증
 moved_signed_distances = (
